@@ -28,6 +28,7 @@ var (
 	clusterPort      int
 	overlayNetwork   int
 	unikernelSupport bool
+	wasmSupport      bool
 	logDirectory     string
 )
 
@@ -45,6 +46,7 @@ func init() {
 	rootCmd.Flags().IntVarP(&clusterPort, "clusterPort", "p", 10100, "Port of the cluster orchestrator")
 	rootCmd.Flags().IntVarP(&overlayNetwork, "netmanagerPort", "n", 6000, "Port of the NetManager component, if any. This enables the overlay network across nodes. Use -1 to disable Overlay Network Mode.")
 	rootCmd.Flags().BoolVarP(&unikernelSupport, "unikernel", "u", false, "Enable Unikernel support. [qemu/kvm required]")
+	rootCmd.Flags().BoolVarP(&wasmSupport, "wasm", "w", false, "Enable Wasm support. [amd64 required]")
 	rootCmd.Flags().StringVarP(&logDirectory, "logs", "l", "/tmp", "Directory for application's logs")
 }
 
@@ -60,6 +62,13 @@ func startNodeEngine() error {
 		unikernelRuntime := virtualization.GetUnikernelRuntime()
 		defer unikernelRuntime.StopUnikernelRuntime()
 	}
+
+	// connect to the WASM runtime only if the node supports it (bool flag tset to true)
+	if wasmSupport {
+		wasmRuntime := virtualization.GetWasmRuntime()
+		defer wasmRuntime.StopWasmRuntime()
+	}
+
 	// hadshake with the cluster orchestrator to get mqtt port and node id
 	handshakeResult := clusterHandshake()
 
