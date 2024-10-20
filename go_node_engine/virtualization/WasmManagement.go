@@ -4,6 +4,7 @@ import (
 	//"context"
 	//"errors"
 	//"fmt"
+
 	"go_node_engine/logger"
 	"go_node_engine/model"
 
@@ -13,7 +14,8 @@ import (
 	//"strings"
 	"sync"
 	"time"
-	//"github.com/bytecodealliance/wasmtime-go/v25"
+
+	wasmtime "github.com/bytecodealliance/wasmtime-go/v25"
 	//"github.com/struCoder/pidusage"
 )
 
@@ -56,7 +58,18 @@ func (r *WasmRuntime) StopWasmRuntime() {
 
 func (r *WasmRuntime) Deploy(service model.Service, statusChangeNotificationHandler func(service model.Service)) error {
 	// TODO
-	logger.InfoLogger().Print("Deploying WASM service")
+
+	logger.InfoLogger().Print("Deploying WASM service...")
+	// To test the execution of the service, fetch the WASM module from local files
+
+	engine := wasmtime.NewEngine()
+	wasiConfig := wasmtime.NewWasiConfig()
+	wasiConfig.InheritStdout() // To inherit stdout for printing
+	store := wasmtime.NewStore(engine)
+	store.SetWasi(wasiConfig)
+
+	logger.InfoLogger().Print("Created Wasmtime engine and store with WASI support")
+
 	return nil
 }
 

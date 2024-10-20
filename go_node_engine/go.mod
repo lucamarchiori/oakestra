@@ -3,11 +3,13 @@ module go_node_engine
 go 1.19
 
 require (
+	github.com/bytecodealliance/wasmtime-go/v25 v25.0.0
 	github.com/containerd/containerd v1.7.6
 	github.com/digitalocean/go-qemu v0.0.0-20210326154740-ac9e0b687001
 	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/opencontainers/runtime-spec v1.1.0-rc.1
 	github.com/shirou/gopsutil v3.21.11+incompatible
+	github.com/spf13/cobra v1.8.1
 	github.com/struCoder/pidusage v0.2.1
 	gotest.tools v2.2.0+incompatible
 )
@@ -17,8 +19,6 @@ require (
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20230306123547-8075edf89bb0 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/Microsoft/hcsshim v0.11.0 // indirect
-	github.com/bytecodealliance/wasmtime-go v1.0.0 // indirect
-	github.com/bytecodealliance/wasmtime-go/v25 v25.0.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/containerd/continuity v0.4.2 // indirect
 	github.com/containerd/fifo v1.1.0 // indirect
@@ -47,7 +47,6 @@ require (
 	github.com/opencontainers/selinux v1.11.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
-	github.com/spf13/cobra v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/tklauser/numcpus v0.4.0 // indirect
