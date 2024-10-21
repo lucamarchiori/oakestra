@@ -9,6 +9,7 @@ import (
 	"go_node_engine/virtualization"
 	"os"
 	"os/signal"
+	rt "runtime"
 	"syscall"
 	"time"
 
@@ -65,6 +66,14 @@ func startNodeEngine() error {
 
 	// connect to the WASM runtime only if the node supports it (bool flag tset to true)
 	if wasmSupport {
+		// The Wasmtime library uses CGO to consume the C API of the Wasmtime project which is written in Rust.
+		// Precompiled binaries of Wasmtime are checked into this repository on tagged releases so you won't have
+		// to install Wasmtime locally, but it means that this project only works on Linux x86_64, macOS x86_64,
+		// and Windows x86_64 currently. More info at https://pkg.go.dev/github.com/bytecodealliance/wasmtime-go/v25
+		if rt.GOARCH != "amd64" {
+			logger.ErrorLogger().Fatal("The WASM runtime is only supported on amd64 architectures (Linux x86_64, macOS x86_64, and Windows x86_64)")
+			return nil
+		}
 		wasmRuntime := virtualization.GetWasmRuntime()
 		defer wasmRuntime.StopWasmRuntime()
 	}
