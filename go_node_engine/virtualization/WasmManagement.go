@@ -202,39 +202,60 @@ func (r *WasmRuntime) WasmRuntimeCreationRoutine(
 			// Handle errors
 			// In Wasmtime, the termination of execution calls the proc_exit function and raises
 			// an exit exception to signal the termination of the program.
+			// Filter errors of type *wasmtime.Error
 			if exitErr, ok := err.(*wasmtime.Error); ok {
 				exitCode, _ := exitErr.ExitStatus()
 				if exitCode == 0 {
 					logger.InfoLogger().Print("Program exited successfully with code 0")
+					if service.OneShot {
+						service.Status = model.SERVICE_COMPLETED
+					} else {
+						service.Status = model.SERVICE_DEAD
+					}
+					statusChangeNotificationHandler(service)
 				} else {
 					logger.InfoLogger().Printf("Program exited with code %d", exitCode)
+					service.Status = model.SERVICE_DEAD
+					statusChangeNotificationHandler(service)
 				}
 			} else {
+				// Handle generic errors
 				logger.InfoLogger().Printf("Error executing function '%s': %v", entry, err)
+				service.Status = model.SERVICE_DEAD
+				statusChangeNotificationHandler(service)
 			}
 		} else {
-			logger.InfoLogger().Print("Module executed successfully")
+			logger.InfoLogger().Print("Module execution completed successfully")
+			if service.OneShot {
+				service.Status = model.SERVICE_COMPLETED
+			} else {
+				service.Status = model.SERVICE_DEAD
+			}
+			statusChangeNotificationHandler(service)
 		}
 	case <-*killChannel:
 		logger.InfoLogger().Printf("Kill channel message received for WASM module %s", taskid)
-		// Interrupt the execution of the module
+		// Interrupt the execution of the module by incrementing the epoch
 		engine.IncrementEpoch()
 		// Wait for the module to respond to interrupt
 		err := <-runResult
 		if err != nil {
-			if exitErr, ok := err.(*wasmtime.Error); ok && exitErr.Error() == "wasm trap: interrupt" {
-				logger.InfoLogger().Print("Module interrupted successfully")
+			// Handle errors of type *wasmtime.Trap
+			if exitErr, ok := err.(*wasmtime.Trap); ok {
+				logger.InfoLogger().Print(exitErr.Message())
+				if exitErr.Code() != nil && *exitErr.Code() == wasmtime.Interrupt {
+					logger.InfoLogger().Print("Module interrupted successfully")
+				}
 			} else {
+				// Handle generic errors
 				logger.InfoLogger().Printf("Error after interrupt: %v", err)
 			}
-		} else {
-			logger.InfoLogger().Print("Module stopped after interrupt")
 		}
-	}
 
-	// Update service status
-	service.Status = model.SERVICE_DEAD
-	statusChangeNotificationHandler(service)
+		// Update service status
+		service.Status = model.SERVICE_DEAD
+		statusChangeNotificationHandler(service)
+	}
 
 	// Clean up and notify that the routine is done
 	*r.killQueue[taskid] <- true
@@ -255,7 +276,7 @@ func (r *WasmRuntime) ResourceMonitoring(every time.Duration, notifyHandler func
 				// For the sake of example, we can estimate or report total usage
 				// Alternatively, WASI could provide resource usage APIs
 				resourceList = append(resourceList, model.Resources{
-					Cpu:      "0",
+					Cpu:      "50",
 					Memory:   "0",
 					Disk:     "0",
 					Sname:    extractSnameFromTaskID(taskid),
@@ -273,5 +294,5 @@ func (r *WasmRuntime) ResourceMonitoring(every time.Duration, notifyHandler func
 // Placeholder for getWasmLogs function
 func getWasmLogs(taskid string) string {
 	// Implement log retrieval if needed
-	return ""
+	return "Test log"
 }
