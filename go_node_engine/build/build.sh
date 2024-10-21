@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+#sudo apt install build-essential # Necessary for GO compilation
 #version=$(git describe --tags --abbrev=0)
 
 #arm build
