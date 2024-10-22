@@ -136,6 +136,20 @@ func (r *WasmRuntime) WasmRuntimeCreationRoutine(
 		return
 	}
 
+	// Set the log file
+	logPath := fmt.Sprintf("%s/%s", model.GetNodeInfo().LogDirectory, taskid)
+	file, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		revert(err)
+		return
+	}
+	//defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.ErrorLogger().Printf("Unable to close log file: %v", err)
+		}
+	}()
+
 	// Create a store with interruptable configuration
 	store := wasmtime.NewStore(engine)
 	defer store.Close()
@@ -146,8 +160,10 @@ func (r *WasmRuntime) WasmRuntimeCreationRoutine(
 		return
 	}
 
+	// Create a WASI configuration and set it in the store
 	wasiConfig := wasmtime.NewWasiConfig()
-	wasiConfig.InheritStdout() // To inherit stdout for printing
+	//wasiConfig.InheritStdout() // To inherit stdout for printing
+	wasiConfig.SetStdoutFile(logPath)
 	defer wasiConfig.Close()
 	store.SetWasi(wasiConfig)
 	store.SetEpochDeadline(1)
@@ -280,7 +296,7 @@ func (r *WasmRuntime) ResourceMonitoring(every time.Duration, notifyHandler func
 					Memory:   "0",
 					Disk:     "0",
 					Sname:    extractSnameFromTaskID(taskid),
-					Logs:     getWasmLogs(taskid),
+					Logs:     getLogs(taskid),
 					Runtime:  string(model.WASM_RUNTIME),
 					Instance: extractInstanceNumberFromTaskID(taskid),
 				})
