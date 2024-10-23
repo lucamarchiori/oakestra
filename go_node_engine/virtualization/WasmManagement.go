@@ -11,6 +11,7 @@ import (
 	"time"
 
 	wasmtime "github.com/bytecodealliance/wasmtime-go/v25"
+	"github.com/struCoder/pidusage"
 )
 
 type WasmRuntime struct {
@@ -154,19 +155,16 @@ func (r *WasmRuntime) WasmRuntimeCreationRoutine(
 	store := wasmtime.NewStore(engine)
 	defer store.Close()
 
-	// Create an interrupt handle
-	if err != nil {
-		revert(fmt.Errorf("failed to create interrupt handle: %v", err))
-		return
-	}
+	// When the epoch deadline is reached, the store will interrupt the execution of the module
+	// this is used to send a kill signal to the module by incrementing the epoch later
+	store.SetEpochDeadline(1)
 
 	// Create a WASI configuration and set it in the store
 	wasiConfig := wasmtime.NewWasiConfig()
-	//wasiConfig.InheritStdout() // To inherit stdout for printing
-	wasiConfig.SetStdoutFile(logPath)
+	//wasiConfig.InheritStdout() // To inherit stdout for printing. Currently set to log file
+	wasiConfig.SetStdoutFile(logPath) // Set the log file as stdout
 	defer wasiConfig.Close()
 	store.SetWasi(wasiConfig)
-	store.SetEpochDeadline(1)
 
 	// Compile the module
 	module, err := wasmtime.NewModule(engine, code)
@@ -177,7 +175,7 @@ func (r *WasmRuntime) WasmRuntimeCreationRoutine(
 	defer module.Close()
 	logger.InfoLogger().Print("Compiled module")
 
-	// Create a linker and define WASI
+	// Create a linker and link the WASI functions
 	linker := wasmtime.NewLinker(engine)
 	err = linker.DefineWasi()
 	if err != nil {
@@ -286,14 +284,18 @@ func (r *WasmRuntime) ResourceMonitoring(every time.Duration, notifyHandler func
 		case <-time.After(every):
 			resourceList := make([]model.Resources, 0)
 			r.channelLock.RLock()
-			// For each running module
+			pid := os.Getpid()
+			sysInfo, err := pidusage.GetStat(pid)
+			if err != nil {
+				logger.ErrorLogger().Printf("Unable to fetch task info: %v", err)
+				continue
+			}
+			// Since WASM modules run in the same process, it's difficult to get per-module resource usage.
+			//This shows statistics of the whole Node Engine process that runs the WASM runtime.
 			for taskid := range r.killQueue {
-				// Since WASM modules run in the same process, it's difficult to get per-module resource usage
-				// For the sake of example, we can estimate or report total usage
-				// Alternatively, WASI could provide resource usage APIs
 				resourceList = append(resourceList, model.Resources{
-					Cpu:      "50",
-					Memory:   "0",
+					Cpu:      fmt.Sprintf("%f", sysInfo.CPU),
+					Memory:   fmt.Sprintf("%f", sysInfo.Memory),
 					Disk:     "0",
 					Sname:    extractSnameFromTaskID(taskid),
 					Logs:     getLogs(taskid),
@@ -305,10 +307,4 @@ func (r *WasmRuntime) ResourceMonitoring(every time.Duration, notifyHandler func
 			notifyHandler(resourceList)
 		}
 	}
-}
-
-// Placeholder for getWasmLogs function
-func getWasmLogs(taskid string) string {
-	// Implement log retrieval if needed
-	return "Test log"
 }
