@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"go_node_engine/logger"
 	"io"
 	"net/http"
 	"net/url"
@@ -19,7 +20,7 @@ import (
 
 // Given the wasm module URL, download the module and return the file path
 func downloadWasmModule(artifactUrl string) (string, error) {
-	fmt.Println("Artifact Url:", artifactUrl)
+	logger.InfoLogger().Printf("Downloading artifact from %s\n", artifactUrl)
 
 	// Select the correct download function based on the artifact URL
 	if isGCloudArtifactUrl(artifactUrl) {
@@ -27,10 +28,10 @@ func downloadWasmModule(artifactUrl string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmt.Println("Artifact downloaded successfully: ", filePath)
+		logger.InfoLogger().Printf("Artifact downloaded successfully: %s\n", filePath)
 		return filePath, nil
 	} else {
-		fmt.Println("Invalid artifact URL")
+		logger.ErrorLogger().Printf("Invalid artifact URL: %s\n", artifactUrl)
 		return "", fmt.Errorf("invalid artifact URL")
 	}
 }
@@ -39,10 +40,10 @@ func downloadWasmModule(artifactUrl string) (string, error) {
 func deleteWasmModule(filePath string) error {
 	err := os.Remove(filePath)
 	if err != nil {
-		fmt.Println("Error deleting file:", err)
+		logger.ErrorLogger().Printf("Error deleting file: %v\n", err)
 		return err
 	}
-	fmt.Println("File deleted successfully")
+	logger.InfoLogger().Printf("File deleted successfully: %s\n", filePath)
 	return nil
 }
 
@@ -77,7 +78,7 @@ func downloadGCloudGenericArtifact(artifactUrl string) (string, error) {
 	// Extract the artifact path from the URL
 	artifactPath := strings.TrimPrefix(parsedUrl.Path, "/download/v1/")
 	artifactPath = strings.TrimSuffix(artifactPath, ":download")
-	fmt.Println("Artifact Path:", artifactPath)
+	logger.InfoLogger().Printf("Artifact path: %s\n", artifactPath)
 
 	ext := pt.Ext(artifactPath)
 
@@ -113,7 +114,7 @@ func downloadGCloudGenericArtifact(artifactUrl string) (string, error) {
 		return "", fmt.Errorf("SHA256 hash not found in file metadata")
 	}
 
-	fmt.Println("SHA256 Hash:", sha256Hash)
+	logger.InfoLogger().Printf("SHA256 hash: %s\n", sha256Hash)
 
 	filename := fmt.Sprintf("%s%s", sha256Hash, ext)
 	cwd, err := os.Getwd()
@@ -126,7 +127,7 @@ func downloadGCloudGenericArtifact(artifactUrl string) (string, error) {
 
 	// If the file already exists, return the path
 	if _, err := os.Stat(outputFile); err == nil {
-		fmt.Println("File already exists:", outputFile)
+		logger.InfoLogger().Printf("File already exists: %s\n", outputFile)
 		return outputFile, nil
 	}
 
