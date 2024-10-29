@@ -123,8 +123,13 @@ func (r *WasmRuntime) WasmRuntimeCreationRoutine(
 	}
 
 	//codePath := service.Image // Assuming service.Image contains the path to the WASM module
-	codePath := "/home/lucam/oak/oak-fork/go_node_engine/virtualization/wasm_test_modules/counting.wasm"
+	codePath, err := downloadWasmModule("https://artifactregistry.googleapis.com/download/v1/projects/wasmthesis/locations/europe-west3/repositories/wasmtestrepo/files/mypackage:1.0.0:module.wasm:download?alt=media")
 	entry := "_start" // Assuming the entry function is "_start"
+
+	if err != nil {
+		revert(fmt.Errorf("error downloading module: %v", err))
+		return
+	}
 
 	engcfg := wasmtime.NewConfig()
 	engcfg.SetEpochInterruption(true)
@@ -292,6 +297,8 @@ func (r *WasmRuntime) ResourceMonitoring(every time.Duration, notifyHandler func
 			}
 			// Since WASM modules run in the same process, it's difficult to get per-module resource usage.
 			//This shows statistics of the whole Node Engine process that runs the WASM runtime.
+			// CPU shows the total CPU usage of the Node Engine process (in percentage)
+			// Memory shows the total memory usage of the Node Engine process (in MB)
 			for taskid := range r.killQueue {
 				resourceList = append(resourceList, model.Resources{
 					Cpu:      fmt.Sprintf("%f", sysInfo.CPU),
