@@ -168,6 +168,9 @@ func (r *ContainerRuntime) containerCreationRoutine(
 	statusChangeNotificationHandler func(service model.Service),
 ) {
 
+	// Start time for benchmarking
+	startTime := time.Now()
+
 	taskid := genTaskID(service.Sname, service.Instance)
 	hostname := fmt.Sprintf("instance-%d", service.Instance)
 
@@ -179,40 +182,43 @@ func (r *ContainerRuntime) containerCreationRoutine(
 		r.killQueue[taskid] = nil
 	}
 
-	//create container general oci specs
+	// Create container general OCI specs
 	specOpts := []oci.SpecOpts{
 		oci.WithImageConfig(image),
 		oci.WithHostHostsFile,
 		oci.WithHostname(hostname),
 		oci.WithEnv(append([]string{fmt.Sprintf("HOSTNAME=%s", hostname)}, service.Env...)),
 	}
-	//add user defined commands
+	// Add user-defined commands
 	if len(service.Commands) > 0 {
 		specOpts = append(specOpts, oci.WithProcessArgs(service.Commands...))
 	}
-	//add GPU if needed
+	// Add GPU if needed
 	if service.Vgpus > 0 {
 		specOpts = append(specOpts, nvidia.WithGPUs(nvidia.WithDevices(0), nvidia.WithAllCapabilities))
 		logger.InfoLogger().Printf("NVIDIA - Adding GPU driver")
 	}
-	//add resolve file with default google dns
+	// Add resolve file with default Google DNS
 	resolvconfFile, err := getGoogleDNSResolveConf()
 	if err != nil {
 		revert(err)
 		return
 	}
-	//defer resolvconfFile.Close()
 	defer func() {
 		if err := resolvconfFile.Close(); err != nil {
 			logger.ErrorLogger().Printf("Unable to close resolvconf file: %v", err)
 		}
 	}()
 
-	// SA9002: file mode 444 evaluates to 0674, which is not a valid file mode
+	// Set file mode
 	_ = resolvconfFile.Chmod(0444)
 	specOpts = append(specOpts, withCustomResolvConf(resolvconfFile.Name()))
 
-	// create the container
+	// Time after preparing OCI specs
+	ociSpecDuration := time.Since(startTime)
+	logger.InfoLogger().Printf("Time to prepare OCI specs: %v us", ociSpecDuration.Microseconds())
+
+	// Create the container
 	container, err := r.contaierClient.NewContainer(
 		ctx,
 		taskid,
@@ -224,14 +230,15 @@ func (r *ContainerRuntime) containerCreationRoutine(
 		revert(err)
 		return
 	}
+	containerCreationDuration := time.Since(startTime)
+	logger.InfoLogger().Printf("Time to create container: %v us", containerCreationDuration.Microseconds())
 
-	//	start task with /tmp/hostname default log directory
+	// Start task with log directory
 	file, err := os.OpenFile(fmt.Sprintf("%s/%s", model.GetNodeInfo().LogDirectory, taskid), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		revert(err)
 		return
 	}
-	//defer file.Close()
 	defer func() {
 		if err := file.Close(); err != nil {
 			logger.ErrorLogger().Printf("Unable to close log file: %v", err)
@@ -239,16 +246,18 @@ func (r *ContainerRuntime) containerCreationRoutine(
 	}()
 
 	task, err := container.NewTask(ctx, cio.NewCreator(cio.WithStreams(nil, file, file)))
-
 	if err != nil {
 		logger.ErrorLogger().Printf("ERROR: containerd task creation failure: %v", err)
 		_ = container.Delete(ctx)
 		revert(err)
 		return
 	}
+	taskSetupDuration := time.Since(startTime)
+	logger.InfoLogger().Printf("Time to setup task: %v us", taskSetupDuration.Microseconds())
+
 	defer func(ctx context.Context, task containerd.Task) {
 		err := killTask(ctx, task, container)
-		//removing from killqueue
+		// Removing from killQueue
 		r.channelLock.Lock()
 		defer r.channelLock.Unlock()
 		r.killQueue[taskid] = nil
@@ -259,7 +268,7 @@ func (r *ContainerRuntime) containerCreationRoutine(
 		}
 	}(ctx, task)
 
-	// get wait channel
+	// Get wait channel
 	exitStatusC, err := task.Wait(ctx)
 	if err != nil {
 		logger.ErrorLogger().Printf("ERROR: containerd task wait failure: %v", err)
@@ -267,7 +276,7 @@ func (r *ContainerRuntime) containerCreationRoutine(
 		return
 	}
 
-	// if Overlay mode is active then attach network to the task
+	// If Overlay mode is active then attach network to the task
 	if model.GetNodeInfo().Overlay {
 		taskpid := int(task.Pid())
 		err = requests.AttachNetworkToTask(taskpid, service.Sname, service.Instance, service.Ports)
@@ -276,25 +285,28 @@ func (r *ContainerRuntime) containerCreationRoutine(
 			revert(err)
 			return
 		}
+		networkAttachDuration := time.Since(startTime)
+		logger.InfoLogger().Printf("Time to attach network: %v us", networkAttachDuration.Microseconds())
 	}
 
-	// execute the image's task
+	// Execute the image's task
 	if err := task.Start(ctx); err != nil {
 		logger.ErrorLogger().Printf("ERROR: containerd task start failure: %v", err)
 		revert(err)
 		return
 	}
+	taskStartDuration := time.Since(startTime)
+	logger.InfoLogger().Printf("Time to start task: %v us", taskStartDuration.Microseconds())
 
-	// adv startup finished
+	// Advise startup finished
 	startup <- true
 
-	// wait for manual task kill or task finish
+	// Wait for manual task kill or task finish
 	select {
 	case exitStatus := <-exitStatusC:
 		if exitStatus.ExitCode() == 0 && service.OneShot {
 			service.Status = model.SERVICE_COMPLETED
 		}
-		//TODO: container exited, do something, notify to cluster manager
 		if err != nil {
 			return
 		}
@@ -308,9 +320,12 @@ func (r *ContainerRuntime) containerCreationRoutine(
 		service.Status = model.SERVICE_DEAD
 	}
 
-	//detaching network
+	// Detach network
 	if model.GetNodeInfo().Overlay {
+		networkDetachStart := time.Now()
 		_ = requests.DetachNetworkFromTask(service.Sname, service.Instance)
+		networkDetachDuration := time.Since(networkDetachStart)
+		logger.InfoLogger().Printf("Time to detach network: %v ms", networkDetachDuration.Milliseconds())
 	}
 	statusChangeNotificationHandler(service)
 	r.removeContainer(container)
